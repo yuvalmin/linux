@@ -22,6 +22,11 @@ if [[ ! -x "$(command -v jq)" ]]; then
 	exit 0
 fi
 
+if [[ ! -x "$(command -v mausezahn)" ]]; then
+	echo "SKIP: mausezahn not installed"
+	exit 0
+fi
+
 if [[ ! -v NUM_NETIFS ]]; then
 	echo "SKIP: importer does not define \"NUM_NETIFS\""
 	exit 0
@@ -160,6 +165,17 @@ mtu_change()
 	done
 }
 
+bridge_ageing_time_get()
+{
+	local ageing_time
+	local bridge=$1
+
+	# Need to divide by 100 to convert to seconds.
+	ageing_time=$(ip -j -d link show dev $bridge \
+		      | jq '.[]["linkinfo"]["info_data"]["ageing_time"]')
+	echo $((ageing_time / 100))
+}
+
 ### Tests ###
 
 ping_test()
@@ -172,4 +188,46 @@ ping_test()
 	ip vrf exec $vrf_name ping $dip -c 10 -i 0.1 -w 2 &> /dev/null
 	check_err $?
 	print_result "ping"
+}
+
+learning_test()
+{
+	local ageing_time
+	local host_if=$4
+	local br_port=$2
+	local bridge=$1
+	local vid=$3
+
+	RET=0
+
+	bridge -j fdb show br $bridge brport $br_port vlan $vid \
+		| jq -e '.[] | select(.mac == "de:ad:be:ef:13:37")' &> /dev/null
+	check_fail $? "found FDB record when should not"
+
+	mausezahn $host_if -c 1 -p 64 -a de:ad:be:ef:13:37 -t ip -q
+
+	bridge -j fdb show br $bridge brport $br_port vlan $vid \
+		| jq -e '.[] | select(.mac == "de:ad:be:ef:13:37")' &> /dev/null
+	check_err $? "did not find FDB record when should"
+
+	# Wait for 10 seconds after the ageing time to make sure FDB
+	# record was aged-out.
+	ageing_time=$(bridge_ageing_time_get $bridge)
+	sleep $((ageing_time + 10))
+
+	bridge -j fdb show br $bridge brport $br_port vlan $vid \
+		| jq -e '.[] | select(.mac == "de:ad:be:ef:13:37")' &> /dev/null
+	check_fail $? "found FDB record when should not"
+
+	bridge link set dev $br_port learning off
+
+	mausezahn $host_if -c 1 -p 64 -a de:ad:be:ef:13:37 -t ip -q
+
+	bridge -j fdb show br $bridge brport $br_port vlan $vid \
+		| jq -e '.[] | select(.mac == "de:ad:be:ef:13:37")' &> /dev/null
+	check_fail $? "found FDB record when should not"
+
+	bridge link set dev $br_port learning on
+
+	print_result "learning"
 }

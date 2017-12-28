@@ -48,7 +48,9 @@ h2_destroy()
 
 bridge_create()
 {
-	ip link add dev br0 type bridge vlan_filtering 1 mcast_snooping 0
+	# 10 Seconds ageing time.
+	ip link add dev br0 type bridge vlan_filtering 1 ageing_time 1000 \
+		mcast_snooping 0
 
 	ip link set dev $swp1 master br0
 	ip link set dev $swp2 master br0
@@ -107,5 +109,7 @@ mtu_change 9000 "${netifs_arr[@]}"
 ping_test "vrf-h1" 192.0.2.2
 ping_test "vrf-h1" 2001:db8:1::2
 mtu_change $old_mtu "${netifs_arr[@]}"
+
+learning_test "br0" $swp1 1 $h1
 
 exit $EXIT_STATUS
