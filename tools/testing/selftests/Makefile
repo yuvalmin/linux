@@ -8,6 +8,7 @@ TARGETS += cpu-hotplug
 TARGETS += efivarfs
 TARGETS += exec
 TARGETS += firmware
+TARGETS += forwarding
 TARGETS += ftrace
 TARGETS += futex
 TARGETS += gpio
