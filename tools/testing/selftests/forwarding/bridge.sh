@@ -112,4 +112,6 @@ mtu_change $old_mtu "${netifs_arr[@]}"
 
 learning_test "br0" $swp1 1 $h1
 
+flood_test $swp2 $h1 $h2
+
 exit $EXIT_STATUS
