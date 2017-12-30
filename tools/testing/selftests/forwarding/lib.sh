@@ -165,6 +165,13 @@ mtu_change()
 	done
 }
 
+link_stats_tx_packets_get()
+{
+       local if_name=$1
+
+       ip -j -s link show dev $if_name | jq '.[]["stats64"]["tx"]["packets"]'
+}
+
 bridge_ageing_time_get()
 {
 	local ageing_time
