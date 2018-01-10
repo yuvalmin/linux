@@ -34,6 +34,20 @@ fi
 
 source forwarding.config
 
+# Load netdev names from command line
+
+count=0
+
+while [[ $# -gt 0 ]]; do
+	if [[ "$count" -eq "0" ]]; then
+		unset NETIFS
+		declare -A NETIFS
+	fi
+	count=$((count + 1))
+	NETIFS[p$count]="$1"
+	shift
+done
+
 for i in $(eval echo {1..$NUM_NETIFS}); do
 	ip link show dev ${NETIFS[p$i]} &> /dev/null
 	if [[ $? -ne 0 ]]; then
