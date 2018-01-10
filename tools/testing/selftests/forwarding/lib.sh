@@ -34,17 +34,23 @@ fi
 
 source forwarding.config
 
-# Load netdev names from command line
+# Load options and netdev names from command line
 
 count=0
 
 while [[ $# -gt 0 ]]; do
-	if [[ "$count" -eq "0" ]]; then
-		unset NETIFS
-		declare -A NETIFS
+	echo $1 | grep "=" &> /dev/null
+	if [[ $? -eq 0 ]]; then
+		splitarr=(${1//=/ })
+		OPTIONS[${splitarr[0]}]=${splitarr[1]}
+	else
+		if [[ "$count" -eq "0" ]]; then
+			unset NETIFS
+			declare -A NETIFS
+		fi
+		count=$((count + 1))
+		NETIFS[p$count]="$1"
 	fi
-	count=$((count + 1))
-	NETIFS[p$count]="$1"
 	shift
 done
 
