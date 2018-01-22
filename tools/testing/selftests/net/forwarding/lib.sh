@@ -77,6 +77,14 @@ for i in $(eval echo {1..$NUM_NETIFS}); do
 done
 
 ##############################################################################
+# Network interfaces based definitions
+
+DEVLINK_DEV=$(devlink port show | grep "${NETIFS[p1]}" | grep -v "${NETIFS[p1]}[0-9]" | \
+	      cut -d" " -f1 | rev | cut -d"/" -f2- | rev)
+DEVLINK_VIDDID=$(lspci -s $(ethtool -i "${NETIFS[p1]}" | grep bus-info | \
+			    cut -d" " -f 2) -n | cut -d" " -f3)
+
+##############################################################################
 # Helpers
 
 # Exit status to return at the end. Set in case one of the tests fails.
