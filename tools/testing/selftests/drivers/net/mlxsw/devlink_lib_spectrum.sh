@@ -157,5 +157,7 @@ devlink_spectrum_resource_size_by_kvd_dpipe_table()
 	local name=$1
 
 	devlink -j -p resource show "$DEVLINK_DEV" | \
-		jq ".resources[\"$DEVLINK_DEV\"][] | select(.name == \"kvd\") | .resources[] | select(.dpipe_tables[].table_name == \"$name\").size"
+		jq ".resources[\"$DEVLINK_DEV\"][] | \
+		    select(.name == \"kvd\") | .resources[] | \
+		    select(.dpipe_tables[].table_name == \"$name\").size"
 }

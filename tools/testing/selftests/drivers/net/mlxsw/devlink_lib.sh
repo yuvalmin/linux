@@ -97,3 +97,20 @@ devlink_reload()
 		fi
 	fi
 }
+
+devlink_dpipe_table_dump()
+{
+	local name=$1
+
+	devlink -j -p dpipe table dump "$DEVLINK_DEV" name "$name" | \
+		jq ".[\"table_entry\"][\"$DEVLINK_DEV\"]"
+}
+
+devlink_dpipe_table_show()
+{
+	local name=$1
+
+	devlink -j -p dpipe table show "$DEVLINK_DEV" | \
+		jq ".[\"table\"][\"$DEVLINK_DEV\"][] | select(.name==\"$name\")"
+
+}
