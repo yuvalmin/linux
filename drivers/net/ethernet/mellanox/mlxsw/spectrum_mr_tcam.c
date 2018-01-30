@@ -51,7 +51,7 @@ struct mlxsw_sp_mr_tcam_region {
 };
 
 struct mlxsw_sp_mr_tcam {
-	struct mlxsw_sp_mr_tcam_region ipv4_tcam_region;
+	struct mlxsw_sp_mr_tcam_region tcam_regions[MLXSW_SP_L3_PROTO_MAX];
 };
 
 /* This struct maps to one RIGR2 register entry */
@@ -316,8 +316,14 @@ static int mlxsw_sp_mr_tcam_route_replace(struct mlxsw_sp *mlxsw_sp,
 					  mlxsw_afa_block_first_set(afa_block));
 		break;
 	case MLXSW_SP_L3_PROTO_IPV6:
-	default:
-		WARN_ON_ONCE(1);
+		mlxsw_reg_rmft2_ipv6_pack(rmft2_pl, true, parman_item->index,
+					  key->vrid,
+					  MLXSW_REG_RMFT2_IRIF_MASK_IGNORE, 0,
+					  key->group.addr6,
+					  key->group_mask.addr6,
+					  key->source.addr6,
+					  key->source_mask.addr6,
+					  mlxsw_afa_block_first_set(afa_block));
 	}
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rmft2), rmft2_pl);
@@ -353,27 +359,29 @@ mlxsw_sp_mr_tcam_erif_populate(struct mlxsw_sp *mlxsw_sp,
 	return 0;
 }
 
+static struct mlxsw_sp_mr_tcam_region *
+mlxsw_sp_mr_tcam_get_region(struct mlxsw_sp_mr_tcam *mr_tcam,
+			    enum mlxsw_sp_l3proto proto)
+{
+	return &mr_tcam->tcam_regions[proto];
+}
+
 static int
 mlxsw_sp_mr_tcam_route_parman_item_add(struct mlxsw_sp_mr_tcam *mr_tcam,
 				       struct mlxsw_sp_mr_tcam_route *route,
 				       enum mlxsw_sp_mr_route_prio prio)
 {
-	struct parman_prio *parman_prio = NULL;
+	struct mlxsw_sp_mr_tcam_region *tcam_region;
 	int err;
 
-	switch (route->key.proto) {
-	case MLXSW_SP_L3_PROTO_IPV4:
-		parman_prio = &mr_tcam->ipv4_tcam_region.parman_prios[prio];
-		err = parman_item_add(mr_tcam->ipv4_tcam_region.parman,
-				      parman_prio, &route->parman_item);
-		if (err)
-			return err;
-		break;
-	case MLXSW_SP_L3_PROTO_IPV6:
-	default:
-		WARN_ON_ONCE(1);
-	}
-	route->parman_prio = parman_prio;
+	tcam_region = mlxsw_sp_mr_tcam_get_region(mr_tcam, route->key.proto);
+	err = parman_item_add(tcam_region->parman,
+			      &tcam_region->parman_prios[prio],
+			      &route->parman_item);
+	if (err)
+		return err;
+
+	route->parman_prio = &tcam_region->parman_prios[prio];
 	return 0;
 }
 
@@ -381,15 +389,12 @@ static void
 mlxsw_sp_mr_tcam_route_parman_item_remove(struct mlxsw_sp_mr_tcam *mr_tcam,
 					  struct mlxsw_sp_mr_tcam_route *route)
 {
-	switch (route->key.proto) {
-	case MLXSW_SP_L3_PROTO_IPV4:
-		parman_item_remove(mr_tcam->ipv4_tcam_region.parman,
-				   route->parman_prio, &route->parman_item);
-		break;
-	case MLXSW_SP_L3_PROTO_IPV6:
-	default:
-		WARN_ON_ONCE(1);
-	}
+	struct mlxsw_sp_mr_tcam_region *tcam_region;
+
+	tcam_region = mlxsw_sp_mr_tcam_get_region(mr_tcam, route->key.proto);
+
+	parman_item_remove(tcam_region->parman,
+			   route->parman_prio, &route->parman_item);
 }
 
 static int
@@ -806,21 +811,43 @@ mlxsw_sp_mr_tcam_region_fini(struct mlxsw_sp_mr_tcam_region *mr_tcam_region)
 static int mlxsw_sp_mr_tcam_init(struct mlxsw_sp *mlxsw_sp, void *priv)
 {
 	struct mlxsw_sp_mr_tcam *mr_tcam = priv;
+	struct mlxsw_sp_mr_tcam_region *region = &mr_tcam->tcam_regions[0];
+	u32 rtar_key;
+	int err;
 
 	if (!MLXSW_CORE_RES_VALID(mlxsw_sp->core, MC_ERIF_LIST_ENTRIES) ||
 	    !MLXSW_CORE_RES_VALID(mlxsw_sp->core, ACL_MAX_TCAM_RULES))
 		return -EIO;
 
-	return mlxsw_sp_mr_tcam_region_init(mlxsw_sp,
-					    &mr_tcam->ipv4_tcam_region,
-					    MLXSW_REG_RTAR_KEY_TYPE_IPV4_MULTICAST);
+	rtar_key = MLXSW_REG_RTAR_KEY_TYPE_IPV4_MULTICAST;
+	err = mlxsw_sp_mr_tcam_region_init(mlxsw_sp,
+					   &region[MLXSW_SP_L3_PROTO_IPV4],
+					   rtar_key);
+	if (err)
+		goto err_ipv4;
+
+	rtar_key = MLXSW_REG_RTAR_KEY_TYPE_IPV6_MULTICAST;
+	err = mlxsw_sp_mr_tcam_region_init(mlxsw_sp,
+					   &region[MLXSW_SP_L3_PROTO_IPV6],
+					   rtar_key);
+	if (err)
+		goto err_ipv6;
+
+	return 0;
+
+err_ipv6:
+	mlxsw_sp_mr_tcam_region_fini(&region[MLXSW_SP_L3_PROTO_IPV4]);
+err_ipv4:
+	return err;
 }
 
 static void mlxsw_sp_mr_tcam_fini(void *priv)
 {
 	struct mlxsw_sp_mr_tcam *mr_tcam = priv;
+	struct mlxsw_sp_mr_tcam_region *region = &mr_tcam->tcam_regions[0];
 
-	mlxsw_sp_mr_tcam_region_fini(&mr_tcam->ipv4_tcam_region);
+	mlxsw_sp_mr_tcam_region_fini(&region[MLXSW_SP_L3_PROTO_IPV4]);
+	mlxsw_sp_mr_tcam_region_fini(&region[MLXSW_SP_L3_PROTO_IPV6]);
 }
 
 const struct mlxsw_sp_mr_ops mlxsw_sp_mr_tcam_ops = {
