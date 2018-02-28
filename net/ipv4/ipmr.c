@@ -1120,13 +1120,11 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
 {
 	const struct iphdr *iph = ip_hdr(skb);
 	struct mfc_cache *c;
-	struct mr_mfc *_c;
 	bool found = false;
 	int err;
 
 	spin_lock_bh(&mfc_unres_lock);
-	list_for_each_entry(_c, &mrt->mfc_unres_queue, list) {
-		c = (struct mfc_cache *)_c;
+	list_for_each_entry(c, &mrt->mfc_unres_queue, _c.list) {
 		if (c->mfc_mcastgrp == iph->daddr &&
 		    c->mfc_origin == iph->saddr) {
 			found = true;
@@ -1145,12 +1143,13 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
 		}
 
 		/* Fill in the new cache entry */
-		_c->mfc_parent	= -1;
+		c->_c.mfc_parent = -1;
 		c->mfc_origin	= iph->saddr;
 		c->mfc_mcastgrp	= iph->daddr;
 
 		/* Reflect first query at mrouted. */
 		err = ipmr_cache_report(mrt, skb, vifi, IGMPMSG_NOCACHE);
+
 		if (err < 0) {
 			/* If the report failed throw the cache entry
 			   out - Brad Parker
@@ -1163,16 +1162,16 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
 		}
 
 		atomic_inc(&mrt->cache_resolve_queue_len);
-		list_add(&_c->list, &mrt->mfc_unres_queue);
+		list_add(&c->_c.list, &mrt->mfc_unres_queue);
 		mroute_netlink_event(mrt, c, RTM_NEWROUTE);
 
 		if (atomic_read(&mrt->cache_resolve_queue_len) == 1)
 			mod_timer(&mrt->ipmr_expire_timer,
-				  _c->mfc_un.unres.expires);
+				  c->_c.mfc_un.unres.expires);
 	}
 
 	/* See if we can append the packet */
-	if (_c->mfc_un.unres.unresolved.qlen > 3) {
+	if (c->_c.mfc_un.unres.unresolved.qlen > 3) {
 		kfree_skb(skb);
 		err = -ENOBUFS;
 	} else {
@@ -1180,7 +1179,7 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
 			skb->dev = dev;
 			skb->skb_iif = dev->ifindex;
 		}
-		skb_queue_tail(&_c->mfc_un.unres.unresolved, skb);
+		skb_queue_tail(&c->_c.mfc_un.unres.unresolved, skb);
 		err = 0;
 	}
 
