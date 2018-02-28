@@ -330,12 +330,23 @@ static int mlxsw_sp_mr_tcam_route_replace(struct mlxsw_sp *mlxsw_sp,
 }
 
 static int mlxsw_sp_mr_tcam_route_remove(struct mlxsw_sp *mlxsw_sp, int vrid,
+					 struct mlxsw_sp_mr_route_key *key,
 					 struct parman_item *parman_item)
 {
+	struct in6_addr zero_addr = IN6ADDR_ANY_INIT;
 	char rmft2_pl[MLXSW_REG_RMFT2_LEN];
 
-	mlxsw_reg_rmft2_ipv4_pack(rmft2_pl, false, parman_item->index, vrid,
-				  0, 0, 0, 0, 0, 0, NULL);
+	switch (key->proto) {
+	case MLXSW_SP_L3_PROTO_IPV4:
+		mlxsw_reg_rmft2_ipv4_pack(rmft2_pl, false, parman_item->index,
+					  vrid, 0, 0, 0, 0, 0, 0, NULL);
+		break;
+	case MLXSW_SP_L3_PROTO_IPV6:
+		mlxsw_reg_rmft2_ipv6_pack(rmft2_pl, false, parman_item->index,
+					  vrid, 0, 0, zero_addr, zero_addr,
+					  zero_addr, zero_addr, NULL);
+		break;
+	}
 
 	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(rmft2), rmft2_pl);
 }
@@ -467,7 +478,7 @@ static void mlxsw_sp_mr_tcam_route_destroy(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_mr_tcam *mr_tcam = priv;
 
 	mlxsw_sp_mr_tcam_route_remove(mlxsw_sp, route->key.vrid,
-				      &route->parman_item);
+				      &route->key, &route->parman_item);
 	mlxsw_sp_mr_tcam_route_parman_item_remove(mr_tcam, route);
 	mlxsw_sp_mr_tcam_afa_block_destroy(route->afa_block);
 	mlxsw_sp_flow_counter_free(mlxsw_sp, route->counter_index);
